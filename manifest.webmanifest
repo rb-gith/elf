@@ -1,7 +1,7 @@
 {
   "name": "ELF",
   "short_name": "ELF",
-  "description": "Your Christmas gift list: people, ideas, photos, and what's bought, wrapped and given.",
+  "description": "Your gift list for Christmas, birthdays and every occasion: people, ideas, photos, and what's bought, wrapped and given.",
   "id": "/elf-app/",
   "start_url": "./",
   "scope": "./",

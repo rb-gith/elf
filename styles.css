@@ -12,8 +12,8 @@
   --on-red: #FBF6EC;
   --track: #EFE5D2;
   --s-idea: #DCCFB6;
-  --s-bought: #C58B2B;
-  --s-wrapped: #B5533F;
+  --s-bought: #B5533F;
+  --s-wrapped: #C58B2B;
   --s-given: #2E6B45;
   --on-stage: #FFFFFF;
   --danger: #A32D2D;
@@ -136,6 +136,15 @@ h1, h2, h3, p { margin: 0; }
 .sheet .field { margin-top: 12px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
 .chip { min-height: 42px; padding: 0 16px; border: 1px solid var(--line); border-radius: 21px; background: var(--card); }
+.chip.fixed { display: inline-flex; align-items: center; color: var(--muted); background: transparent; }
+
+/* ---------- Occasion chips ---------- */
+.occs { display: flex; gap: 6px; overflow-x: auto; margin: 0 -2px 12px; padding: 2px; scrollbar-width: none; }
+.occs::-webkit-scrollbar { display: none; }
+.occ { flex: none; min-height: 36px; padding: 0 14px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); color: var(--ink); font-size: 14px; white-space: nowrap; }
+.occ[aria-pressed="true"] { background: var(--s-given); border-color: var(--s-given); color: var(--on-stage); font-weight: 500; }
+.occ.add { padding: 0 13px; color: var(--muted); border-style: dashed; }
+.occ-tag { display: inline-block; margin-left: 4px; padding: 1px 7px; border-radius: 8px; background: var(--soft); color: var(--muted); font-size: 11px; font-weight: 400; vertical-align: 2px; }
 
 /* ---------- Menu ---------- */
 .menu h3 { font: 400 19px/1.3 var(--serif); margin-top: 22px; }

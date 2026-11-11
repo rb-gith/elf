@@ -1,7 +1,7 @@
 'use strict';
 
 /* =========================================================
-   ELF — a Christmas gift tracker (PWA)
+   ELF — a gift tracker for every occasion (PWA)
    People, gift ideas and photos live in this device's IndexedDB,
    settings in its localStorage. Nothing is sent anywhere.
    ========================================================= */
@@ -18,6 +18,11 @@ const DATA_FILE = 'elf-data.json';
 const COFFEE_URL = 'https://buymeacoffee.com/gionzana';
 const GITHUB_URL = 'https://github.com/rb-gith?tab=repositories';
 const POOL = 'pool';
+/* Occasions: two built in (stored by key, shown translated), plus the user's own (stored by name) */
+const BUILT_IN = ['christmas', 'birthday'];
+const DEFAULT_OCCASION = 'christmas';
+const ALL = 'all';
+const MAX_OCCASIONS = 12, OCCASION_LEN = 30;
 
 const $ = sel => document.querySelector(sel);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -27,11 +32,23 @@ const todayKey = () => { const d = new Date(); return `${d.getFullYear()}-${pad(
 const isDate = k => typeof k === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(k);
 
 /* ---------- Settings and language ---------- */
+function cleanOccasions(list) {
+  const out = [];
+  (Array.isArray(list) ? list : []).forEach(o => {
+    const name = typeof o === 'string' ? o.trim().slice(0, OCCASION_LEN) : '';
+    if (name && !BUILT_IN.includes(name) && name !== ALL && !out.includes(name) && out.length < MAX_OCCASIONS) out.push(name);
+  });
+  return out;
+}
 function cleanSettings(s) {
   s = s && typeof s === 'object' ? s : {};
+  const occasions = cleanOccasions(s.occasions);
+  const filter = s.filter === ALL || BUILT_IN.includes(s.filter) || occasions.includes(s.filter) ? s.filter : ALL;
   return {
     lang: s.lang === 'en' || s.lang === 'it' ? s.lang : null,
     lastBackup: isDate(s.lastBackup) ? s.lastBackup : null,
+    occasions,
+    filter,
   };
 }
 let settings = cleanSettings(null);
@@ -52,8 +69,19 @@ function setLang(next) {
 }
 document.documentElement.lang = lang;
 
-/* The list belongs to the Christmas just ahead, or just gone in January */
-const christmasYear = () => { const d = new Date(); return d.getMonth() === 0 ? d.getFullYear() - 1 : d.getFullYear(); };
+/* ---------- Occasions ---------- */
+const occasionLabel = o => BUILT_IN.includes(o) ? tr('occ_' + o) : o;
+/* Built-in ones, the user's own, and any found in the gifts (from an older backup, say) */
+function allOccasions() {
+  const found = gifts.map(g => g.occasion).filter(o => !BUILT_IN.includes(o) && !settings.occasions.includes(o));
+  return BUILT_IN.concat(settings.occasions, [...new Set(found)]);
+}
+const shown = g => settings.filter === ALL || g.occasion === settings.filter;
+/* A typed name that matches a built-in occasion in either language becomes that occasion */
+function occasionFromName(name) {
+  const low = name.toLowerCase();
+  return BUILT_IN.find(o => Object.keys(TEXT).some(l => TEXT[l]['occ_' + o].toLowerCase() === low)) || name;
+}
 
 /* ---------- Storage ---------- */
 let db;
@@ -122,7 +150,8 @@ function dropThumb(id) {
 }
 const personById = id => people.find(p => p.id === id);
 const giftById = id => gifts.find(g => g.id === id);
-const giftsOf = personId => gifts.filter(g => g.personId === personId).sort((a, b) => a.created - b.created);
+const giftsOf = personId => gifts.filter(g => g.personId === personId && shown(g)).sort((a, b) => a.created - b.created);
+const allGiftsOf = personId => gifts.filter(g => g.personId === personId);
 const byCreated = (a, b) => a.created - b.created;
 
 /* Everything read from a backup file is reduced to known fields and types */
@@ -140,9 +169,15 @@ function cleanGift(g, personIds) {
     text: text(g.text, 200),
     note: typeof g.note === 'string' ? g.note.slice(0, 2000) : '',
     stage,
+    occasion: cleanOccasion(g.occasion),
     photos: Array.isArray(g.photos) ? g.photos.filter(x => typeof x === 'string').slice(0, MAX_PHOTOS) : [],
     created: Number(g.created) || Date.now(),
   };
+}
+/* Ideas saved before occasions existed were all for Christmas */
+function cleanOccasion(o) {
+  const name = typeof o === 'string' ? o.trim().slice(0, OCCASION_LEN) : '';
+  return name && name !== ALL ? name : DEFAULT_OCCASION;
 }
 
 /* ---------- Photos: shrunk once, when they are added ---------- */
@@ -255,9 +290,23 @@ const initials = name => {
 };
 const hashOf = s => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) | 0; return Math.abs(h); };
 
+/* ---------- Occasion chips: filter every list ---------- */
+function chipsHtml() {
+  const chip = (value, label) => `<button class="occ" data-act="filter" data-occ="${esc(value)}" aria-pressed="${settings.filter === value}">${esc(label)}</button>`;
+  return `<div class="occs" role="group" aria-label="${tr('occasions')}">
+    ${chip(ALL, tr('occ_all'))}${allOccasions().map(o => chip(o, occasionLabel(o))).join('')}
+    <button class="occ add" data-act="add-occasion" aria-label="${tr('addOccasion')}">+</button>
+  </div>`;
+}
+function setFilter(value) {
+  settings.filter = value;
+  saveSettings();
+  render();
+}
+
 /* ---------- Home: the people list ---------- */
 function homeHtml() {
-  const assigned = gifts.filter(g => g.personId);
+  const assigned = gifts.filter(g => g.personId && shown(g));
   const given = assigned.filter(g => g.stage === 'given').length;
   const pool = giftsOf(null);
   const poolSub = pool.length === 0 ? tr('poolNone') : pool.length === 1 ? tr('poolOne') : tr('poolMany', pool.length);
@@ -267,15 +316,16 @@ function homeHtml() {
     const complete = list.length && done === list.length;
     return `<button class="row" data-act="open-person" data-id="${esc(p.id)}">
       <span class="avatar a${hashOf(p.id) % 4}">${esc(initials(p.name))}</span>
-      <span class="who"><span class="name">${esc(p.name)}</span>${list.length ? barHtml(list, true) : `<span class="sub">${tr('noGifts')}</span>`}</span>
+      <span class="who"><span class="name">${esc(p.name)}</span>${list.length ? barHtml(list, true) : `<span class="sub">${settings.filter !== ALL && allGiftsOf(p.id).length ? tr('noneHere') : tr('noGifts')}</span>`}</span>
       ${list.length ? `<span class="tally${complete ? ' done' : ''}">${complete ? '✓ ' : ''}${done}/${list.length}</span>` : ''}
     </button>`;
   }).join('');
   return `<div class="view">
     <header class="topbar">
-      <h1>${tr('title', christmasYear())}</h1>
+      <h1>${tr('title')}</h1>
       <button class="icon-btn" data-act="menu" aria-label="${tr('menu')}">${svg.menu}</button>
     </header>
+    ${chipsHtml()}
     ${assigned.length ? `<p class="summary"><span>${tr('givenOf', given, assigned.length)}</span></p>${barHtml(assigned)}` : ''}
     <button class="row pool" data-act="open-pool">
       <span class="avatar pool-av">${svg.bulb}</span>
@@ -301,8 +351,9 @@ function listHtml(owner) {
       ${!isPool && list.length ? `<span class="count">${done}/${list.length}</span>` : ''}
       ${isPool ? '' : `<button class="link-btn" data-act="edit-person">${tr('rename')}</button>`}
     </header>
+    ${chipsHtml()}
     ${list.map(g => giftHtml(g, isPool)).join('')}
-    ${list.length ? '' : `<p class="hint">${isPool ? tr('poolEmpty') : tr('gifts0')}</p>`}
+    ${list.length ? '' : `<p class="hint">${settings.filter !== ALL && allGiftsOf(isPool ? null : owner).length ? tr('noneForOccasion', occasionLabel(settings.filter)) : isPool ? tr('poolEmpty') : tr('gifts0')}</p>`}
     <button class="btn dashed" data-act="add-gift">+ ${tr('addGift')}</button>
   </div>`;
 }
@@ -315,7 +366,7 @@ function giftHtml(g, isPool) {
     <button class="gift-main" data-act="edit-gift" data-id="${esc(g.id)}">
       ${first ? `<img class="thumb" src="${first}" alt="">` : `<span class="thumb none">${svg.photo}</span>`}
       <span class="gift-text">
-        <span class="gift-title">${esc(g.text)}</span>
+        <span class="gift-title">${esc(g.text)}${settings.filter === ALL ? ` <span class="occ-tag">${esc(occasionLabel(g.occasion))}</span>` : ''}</span>
         ${g.note ? `<span class="gift-note">${esc(g.note)}</span>` : ''}
         ${g.photos.length > 1 ? `<span class="gift-more">${tr('photoCount', g.photos.length)}</span>` : ''}
       </span>
@@ -343,6 +394,7 @@ function startForm(key, gift, owner) {
     key,
     gift,
     personId: gift ? gift.personId : owner === POOL ? null : owner,
+    occasion: gift ? gift.occasion : settings.filter !== ALL ? settings.filter : DEFAULT_OCCASION,
     photos: gift ? gift.photos.map(id => ({ id, saved: true, url: thumbUrls.get(id) })) : [],
     removed: [],
   };
@@ -370,6 +422,7 @@ function formHtml() {
     <label class="field"><span>${tr('note')}</span>
       <textarea name="note" rows="2" maxlength="2000" placeholder="${tr('notePlaceholder')}">${g ? esc(g.note) : ''}</textarea></label>
     <label class="field"><span>${tr('forWho')}</span><select name="personId">${options}</select></label>
+    <label class="field"><span>${tr('occasion')}</span><select name="occasion" id="occasion-select">${occasionOptions(f.occasion)}</select></label>
     <div class="field"><span class="field-label">${tr('photos')}</span>
       <div class="photos" id="photos">${photosHtml()}</div>
       <p class="small-note">${tr('photoHint', MAX_PHOTOS)}</p>
@@ -379,6 +432,13 @@ function formHtml() {
       <button class="btn primary grow">${tr('save')}</button>
     </div>
   </form></div>`;
+}
+const NEW_OCCASION = '__new__';
+function occasionOptions(selected) {
+  const list = allOccasions();
+  if (!list.includes(selected)) list.push(selected);
+  return list.map(o => `<option value="${esc(o)}" ${o === selected ? 'selected' : ''}>${esc(occasionLabel(o))}</option>`).join('')
+    + `<option value="${NEW_OCCASION}">+ ${tr('newOccasion')}</option>`;
 }
 function photosHtml() {
   const list = ui.form.photos.map((p, i) => `<div class="ph">
@@ -436,6 +496,7 @@ async function submitGift(form) {
     text: giftText.slice(0, 200),
     note: String(d.get('note') || '').trim().slice(0, 2000),
     stage,
+    occasion: cleanOccasion(d.get('occasion') === NEW_OCCASION ? f.occasion : d.get('occasion')),
     photos: f.photos.map(p => p.id),
     created: old ? old.created : Date.now(),
   };
@@ -504,7 +565,7 @@ async function submitPerson(form) {
   render();
 }
 async function deletePerson(p) {
-  const theirs = giftsOf(p.id);
+  const theirs = allGiftsOf(p.id);
   if (!confirm(theirs.length ? tr('confirmDeletePerson', p.name) : tr('confirmDeletePersonEmpty', p.name))) return;
   try {
     await write(tx => {
@@ -541,6 +602,49 @@ async function giveTo(g, person) {
   gifts[gifts.indexOf(g)] = updated;
   sheet.close();
   toast(tr('movedTo', person.name));
+  render();
+}
+
+/* ---------- The user's own occasions ---------- */
+function openOccasionSheet() {
+  sheet.innerHTML = `<form id="occasion-form" method="dialog" novalidate>
+    <h3>${tr('newOccasion')}</h3>
+    <label class="field"><span>${tr('occasionName')}</span>
+      <input type="text" name="name" maxlength="${OCCASION_LEN}" placeholder="${tr('occasionPlaceholder')}" autocomplete="off"></label>
+    <p class="small-note" id="occasion-error" style="color:var(--danger)" hidden></p>
+    <div class="btns">
+      <button type="button" class="btn" data-act="sheet-close">${tr('cancel')}</button>
+      <button class="btn primary grow">${tr('save')}</button>
+    </div>
+  </form>`;
+  sheet.showModal();
+  sheet.querySelector('input').focus();
+}
+function submitOccasion(form) {
+  const error = msg => { const el = $('#occasion-error'); el.textContent = msg; el.hidden = false; };
+  const typed = form.elements.name.value.trim().slice(0, OCCASION_LEN);
+  if (!typed) { error(tr('occasionError')); return; }
+  const occ = occasionFromName(typed);
+  if (occ === ALL || occ === NEW_OCCASION) { error(tr('occasionError')); return; }
+  const known = allOccasions().includes(occ);
+  if (!known && settings.occasions.length >= MAX_OCCASIONS) { error(tr('occasionLimit', MAX_OCCASIONS)); return; }
+  if (!known) settings.occasions.push(occ);
+  sheet.close();
+  if (ui.form) {
+    /* Stay on the form, keeping what was typed: pick the new occasion in its list */
+    ui.form.occasion = occ;
+    saveSettings();
+    const sel = $('#occasion-select');
+    if (sel) sel.innerHTML = occasionOptions(occ);
+    return;
+  }
+  setFilter(occ);
+}
+function removeOccasion(o) {
+  if (gifts.some(g => g.occasion === o)) { toast(tr('occasionInUse', o)); return; }
+  settings.occasions = settings.occasions.filter(x => x !== o);
+  if (settings.filter === o) settings.filter = ALL;
+  saveSettings();
   render();
 }
 
@@ -588,6 +692,13 @@ function menuHtml() {
       <button data-act="lang" data-lang="en" aria-pressed="${lang === 'en'}">English</button>
       <button data-act="lang" data-lang="it" aria-pressed="${lang === 'it'}">Italiano</button>
     </div>
+    <h3>${tr('occasions')}</h3>
+    <p class="note">${tr('occasionsNote')}</p>
+    <div class="chips">
+      ${BUILT_IN.map(o => `<span class="chip fixed">${esc(occasionLabel(o))}</span>`).join('')}
+      ${settings.occasions.map(o => `<button class="chip" data-act="remove-occasion" data-occ="${esc(o)}" aria-label="${esc(tr('removeOccasion', o))}">${esc(o)} ×</button>`).join('')}
+      <button class="chip" data-act="add-occasion">+ ${tr('newOccasion')}</button>
+    </div>
     <h3>${tr('backup')}</h3>
     <p class="note">${tr('backupNote')}${last}</p>
     <p class="note" id="storage-use" hidden></p>
@@ -625,7 +736,7 @@ async function exportBackup() {
         if (blob) files.push({ name: `photos/${id}.jpg`, blob });
       }
     }
-    const data = { app: 'elf', version: 1, people, gifts };
+    const data = { app: 'elf', version: 2, people, gifts, occasions: settings.occasions };
     files.push({ name: DATA_FILE, blob: new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }) });
     const zip = await ZIP.write(files);
     const stamp = todayKey();
@@ -684,6 +795,9 @@ async function importBackup(file) {
   people = newPeople;
   gifts = newGifts;
   photos.forEach(p => setThumb(p.id, p.thumb));
+  /* Older backups have no occasion list: keep the user's own, add any found in the backup */
+  settings.occasions = cleanOccasions(settings.occasions.concat(cleanOccasions(data.occasions)));
+  if (settings.filter !== ALL && !allOccasions().includes(settings.filter)) settings.filter = ALL;
   settings.lastBackup = todayKey();
   saveSettings();
   keepData();
@@ -747,6 +861,9 @@ document.addEventListener('click', e => {
     case 'delete-gift': if (ui.form && ui.form.gift) deleteGift(ui.form.gift); break;
     case 'lang': setLang(b.dataset.lang); break;
     case 'export': exportBackup(); break;
+    case 'filter': setFilter(b.dataset.occ); break;
+    case 'add-occasion': openOccasionSheet(); break;
+    case 'remove-occasion': removeOccasion(b.dataset.occ); break;
   }
 });
 
@@ -754,14 +871,25 @@ document.addEventListener('submit', e => {
   e.preventDefault();
   if (e.target.id === 'gift-form') submitGift(e.target);
   else if (e.target.id === 'person-form') submitPerson(e.target);
+  else if (e.target.id === 'occasion-form') submitOccasion(e.target);
 });
 
 document.addEventListener('input', e => {
   if (e.target.name === 'text' && $('#text-error')) $('#text-error').hidden = true;
   if (e.target.name === 'name' && $('#name-error')) $('#name-error').hidden = true;
+  if (e.target.name === 'name' && $('#occasion-error')) $('#occasion-error').hidden = true;
 });
 
 document.addEventListener('change', e => {
+  if (e.target.id === 'occasion-select' && ui.form) {
+    if (e.target.value === NEW_OCCASION) {
+      e.target.value = ui.form.occasion;
+      openOccasionSheet();
+    } else {
+      ui.form.occasion = e.target.value;
+    }
+    return;
+  }
   if (e.target.id === 'import-file') {
     const file = e.target.files[0];
     e.target.value = '';
@@ -776,7 +904,7 @@ document.addEventListener('change', e => {
     db = await openDb();
     const [savedPeople, savedGifts, thumbs] = await Promise.all([request('people', 'getAll'), request('gifts', 'getAll'), allEntries('thumbs')]);
     people = savedPeople;
-    gifts = savedGifts;
+    gifts = savedGifts.map(g => Object.assign({}, g, { occasion: cleanOccasion(g.occasion) }));
     thumbs.forEach((blob, id) => setThumb(id, blob));
   } catch (e) {
     db = null;

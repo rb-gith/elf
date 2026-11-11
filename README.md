@@ -1,6 +1,6 @@
 # ELF
 
-A simple Christmas gift tracker for your phone: who you're buying for, gift ideas with photos, and what's bought, wrapped and given.
+A simple gift tracker for your phone, for Christmas, birthdays and any occasion: who you're buying for, gift ideas with photos, and what's bought, wrapped and given.
 
 It works offline and keeps everything on your phone. Nothing is sent anywhere, and there's no account.
 
@@ -8,6 +8,7 @@ It works offline and keeps everything on your phone. Nothing is sent anywhere, a
 - **People:** add the people on your list. Each row shows a thin bar with their gifts by stage, and how many are given (for example 2/3).
 - **Gift ideas:** tap a person, then "Add gift idea". Write the idea, an optional note (shop, price, size), and add up to 3 photos. The phone offers the camera or the gallery.
 - **Stages:** each gift has four steps: idea, bought, wrapped, given. Tap any step to set it, and tap an earlier one to undo.
+- **Occasions:** each idea belongs to an occasion: Christmas, Birthday, or one of your own (tap "+" at the top). The chips at the top show all ideas or one occasion. Remove your own occasions in the menu.
 - **Ideas for anyone:** ideas not meant for anyone yet go in the row at the top. Tap "Give to…" to move one to a person, with its photos and stage.
 - **Edit or delete:** tap a gift to change it, move it to someone else, or delete it. Use "Edit" on a person's page to rename or delete them.
 - **Language:** English or Italian, in the menu.
