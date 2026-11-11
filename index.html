@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light only">
+<meta name="theme-color" content="#FBF6EC">
+<meta name="description" content="Your Christmas gift list: people, ideas, photos, and what's bought, wrapped and given. Offline and private.">
+<title>ELF</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="app"></div>
+<div id="toast" class="toast" role="status" hidden></div>
+<dialog id="sheet" class="sheet"></dialog>
+<dialog id="viewer" class="viewer"></dialog>
+<input type="file" accept="image/*" id="photo-input" hidden>
+
+<script src="lang.js"></script>
+<script src="zip.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
